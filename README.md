@@ -44,6 +44,22 @@ npm run build
 npm run preview
 ```
 
+## History (Supabase, optional)
+
+Without configuration the app runs fully offline as above. To enable the
+prescription history:
+
+1. Create a Supabase project and run the SQL in `docs/supabase-history-plan.md`
+   (table + owner-only RLS), then add the doctor user under Auth
+2. Copy the Mevoura Lideru + anon key into `.env.local` (never committed):
+   ```bash
+   VITE_SUPABASE_URL=https://xyzcompany.supabase.co
+   VITE_SUPABASE_ANON_KEY=<your-anon-key>
+   ```
+3. Restart `npm run dev`, sign in, and a **History** tab appears — every PDF
+   download auto-saves a record, searchable by patient name
+4. For Vercel deploys, add the same two vars in the project dashboard
+
 ## Project structure
 
 ```

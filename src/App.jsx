@@ -1,8 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import PrescriptionForm from './components/PrescriptionForm.jsx'
 import PrescriptionPreview from './components/PrescriptionPreview.jsx'
+import Login from './components/Login.jsx'
+import History from './components/History.jsx'
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 
 function todayISO() {
   const d = new Date()
@@ -31,8 +34,14 @@ const blankForm = () => ({
 
 export default function App() {
   const [data, setData] = useState(blankForm)
-  const [view, setView] = useState('form') // 'form' | 'preview' (mobile toggle)
+  const [view, setView] = useState('form') // 'form' | 'preview' | 'history'
   const [busy, setBusy] = useState(false)
+  const [session, setSession] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [saveBusy, setSaveBusy] = useState(false)
+  const [savedAt, setSavedAt] = useState(null) // { at: Date, updated: bool } | null
+  const [editingId, setEditingId] = useState(null) // history row being edited, if any
+  const [histTick, setHistTick] = useState(0)
   const [zoom, setZoom] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 900 ? 1 : 0.7,
   )
@@ -53,6 +62,117 @@ export default function App() {
     const cleanName = (data.name.trim().replace(/\s+/g, '') || 'Patient').replace(/[^\w\-]/g, '')
     return `Prescription_${cleanName}_${data.date || todayISO()}.pdf`
   }, [data])
+
+  // Supabase session (history + save). Without env config the app runs
+  // fully offline exactly as before — no login, no history.
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setAuthReady(true)
+      return
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null)
+      setAuthReady(true)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  const saveReady = useMemo(
+    () =>
+      isSupabaseConfigured &&
+      !!session &&
+      data.name.trim().length > 0 &&
+      data.date.trim().length > 0 &&
+      String(data.age).trim().length > 0 &&
+      String(data.gender).trim().length > 0,
+    [data, session],
+  )
+
+  async function saveRecord() {
+    if (!saveReady || saveBusy) return false
+    setSaveBusy(true)
+    try {
+      const nil = (v) => (String(v ?? '').trim() === '' ? null : v)
+      const payload = {
+        patient_name: data.name.trim(),
+        age: String(data.age).trim(),
+        gender: String(data.gender).trim(),
+        visit_date: data.date || todayISO(),
+        weight: nil(data.weight),
+        height: nil(data.height),
+        admitted_on: nil(data.doa),
+        surgery_on: nil(data.dos),
+        co: nil(data.co),
+        hopi: nil(data.hopi),
+        oe: nil(data.oe),
+        adv: nil(data.adv),
+        wd: nil(data.wd),
+        plan: nil(data.plan),
+        rx: nil(data.rx),
+      }
+      if (editingId) {
+        // Editing a history record → update it in place, no new row.
+        const { data: updated, error } = await supabase
+          .from('prescriptions')
+          .update(payload)
+          .eq('id', editingId)
+          .select('id')
+        if (error) throw error
+        if (!updated || updated.length === 0) {
+          // Row vanished (deleted elsewhere) → save as a new entry instead.
+          const { data: inserted, error: insErr } = await supabase
+            .from('prescriptions')
+            .insert({ ...payload, user_id: session.user.id })
+            .select('id')
+          if (insErr) throw insErr
+          setEditingId(inserted[0].id)
+          setSavedAt({ at: new Date(), updated: false })
+        } else {
+          setSavedAt({ at: new Date(), updated: true })
+        }
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('prescriptions')
+          .insert({ ...payload, user_id: session.user.id })
+          .select('id')
+        if (error) throw error
+        setEditingId(inserted[0].id)
+        setSavedAt({ at: new Date(), updated: false })
+      }
+      setHistTick((t) => t + 1)
+      return true
+    } catch (err) {
+      console.error('History save failed', err)
+      alert('PDF saved, but storing to history failed: ' + (err.message || err))
+      return false
+    } finally {
+      setSaveBusy(false)
+    }
+  }
+
+  function openRecord(r) {
+    setEditingId(r.id)
+    setData({
+      name: r.patient_name || '',
+      age: r.age || '',
+      gender: r.gender || '',
+      date: r.visit_date || todayISO(),
+      weight: r.weight || '',
+      height: r.height || '',
+      doa: r.admitted_on || '',
+      dos: r.surgery_on || '',
+      co: r.co || '',
+      hopi: r.hopi || '',
+      oe: r.oe || '',
+      adv: r.adv || '',
+      wd: r.wd || '',
+      plan: r.plan || '',
+      rx: r.rx || '',
+    })
+    setSavedAt(null)
+    setView('preview')
+  }
 
   async function handleDownload() {
     const node = sheetRef.current
@@ -212,6 +332,8 @@ export default function App() {
         })
       }
       pdf.save(fileName)
+      // Append to history (logged-in only; PDF is already saved by now).
+      if (session) await saveRecord()
     } catch (err) {
       console.error('PDF generation failed', err)
       alert('PDF generation failed. Please try again.')
@@ -237,25 +359,77 @@ export default function App() {
   function handleClear() {
     if (window.confirm('Start a new patient? This clears all fields.')) {
       setData(blankForm())
+      setEditingId(null)
+      setSavedAt(null)
       setView('form')
     }
   }
 
+  const authed = isSupabaseConfigured && !!session
+
+  if (!authReady) {
+    return (
+      <div className="app-shell">
+        <header className="app-header">
+          <div>
+            <h1>Prescription Form → PDF</h1>
+            <p>Loading…</p>
+          </div>
+        </header>
+      </div>
+    )
+  }
+
+  if (isSupabaseConfigured && !session) {
+    return (
+      <div className="app-shell">
+        <header className="app-header">
+          <div>
+            <h1>Prescription Form → PDF</h1>
+            <p>Sign in to continue</p>
+          </div>
+        </header>
+        <main className="main main-centered">
+          <Login />
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className={`app-shell ${view === 'form' ? 'show-form' : 'show-preview'}`}>
+    <div className={`app-shell ${view === 'form' ? 'show-form' : view === 'history' ? 'show-history' : 'show-preview'}`}>
       <header className="app-header">
         <div>
           <h1>Prescription Form → PDF</h1>
           <p>Fill • Preview • Download — works offline, private to this device</p>
         </div>
         <div className="header-actions">
+          {authed && (
+            <button
+              className="btn btn-ghost btn-small history-nav"
+              onClick={() => setView((v) => (v === 'history' ? 'form' : 'history'))}
+              type="button"
+            >
+              {view === 'history' ? '← Back' : 'History'}
+            </button>
+          )}
           <button className="btn btn-ghost btn-small" onClick={handleClear} type="button">
             New
           </button>
+          {session && (
+            <button
+              className="btn btn-ghost btn-small"
+              onClick={() => supabase.auth.signOut()}
+              type="button"
+              title={session.user.email || 'Sign out'}
+            >
+              Out
+            </button>
+          )}
         </div>
       </header>
 
-      <div className="view-toggle" role="tablist" aria-label="Form or preview">
+      <div className="view-toggle" role="tablist" aria-label="Form, preview or history">
         <button
           role="tab"
           aria-selected={view === 'form'}
@@ -274,15 +448,28 @@ export default function App() {
         >
           ⎙ Preview
         </button>
+        {authed && (
+          <button
+            role="tab"
+            aria-selected={view === 'history'}
+            className={view === 'history' ? 'active' : ''}
+            onClick={() => setView('history')}
+            type="button"
+          >
+            ☰ History
+          </button>
+        )}
       </div>
 
       <main className="main">
         <section className="panel form-panel" aria-label="Patient form">
           <p className="privacy-note">
             🔒 100% private — all rendering and PDF generation happens in this browser.
-            No data is sent to any server.
+            {authed
+              ? ' Saving to history sends the form data to your Supabase project.'
+              : ' No data is sent to any server.'}
           </p>
-          <PrescriptionForm data={data} onChange={setData} />
+          <PrescriptionForm data={data} onChange={(d) => { setData(d); setSavedAt(null) }} />
         </section>
 
         <section className="panel preview-panel" aria-label="Template preview">
@@ -295,6 +482,17 @@ export default function App() {
             >
               {busy ? 'Generating PDF…' : '⬇ Download PDF'}
             </button>
+            {authed && (
+              <button
+                className="btn"
+                onClick={saveRecord}
+                disabled={!saveReady || busy || saveBusy}
+                type="button"
+                title={!saveReady ? 'Fill Name + Age + Gender + Date first' : editingId ? 'Update this history entry' : 'Save to history without downloading'}
+              >
+                {saveBusy ? 'Saving…' : editingId ? 'Update' : 'Save'}
+              </button>
+            )}
             <button className="btn" onClick={handleClear} type="button">
               Clear Form
             </button>
@@ -325,8 +523,20 @@ export default function App() {
             {!data.name.trim() || !data.date || !String(data.age).trim() || !String(data.gender).trim()
               ? 'Fill Patient’s Name + Age + Gender + Date to enable download.'
               : `Ready — will save as ${fileName}`}
+            {savedAt && authed
+              ? ` · ${savedAt.updated ? 'Updated' : 'Saved to history'} ✓ ${savedAt.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
           </p>
         </section>
+
+        {view === 'history' && authed && (
+          <section className="panel history-panel" aria-label="Prescription history">
+            <History
+              key={`${session.user.id}-${histTick}`}
+              onOpen={openRecord}
+            />
+          </section>
+        )}
       </main>
     </div>
   )

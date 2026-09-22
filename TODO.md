@@ -35,3 +35,16 @@
 - [ ] Confirm A4 vs Letter page size
 - [ ] Confirm fixed kg/cm units are fine, or add toggle
 - [ ] Decide if a clinic name/logo header is needed later
+
+## Prescription History (Supabase upgrade — see docs/supabase-history-plan.md)
+- [x] Create Supabase project `dr-prescription` (ap-south-1), keep StockLine untouched
+- [x] Run schema SQL: `prescriptions` table + owner-only RLS policy (+ pg_trgm optional)
+- [x] Create doctor login (Supabase Dashboard → Auth → Add user) — manual step
+- [x] `npm i @supabase/supabase-js` + add `src/lib/supabaseClient.js`
+- [x] Add `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY); mirror vars in Vercel
+- [x] Build `Login.jsx` auth gate + sign-out in header
+- [x] Save record to Supabase after successful PDF download (+ manual Save)
+- [x] Build `History.jsx`: list newest-first, search by patient name
+- [x] History row actions: Open in form, re-download PDF, Delete (confirm)
+- [x] Add History to mobile view toggle + desktop layout
+- [ ] QA: login → download (row appears) → search → open → edit → save → delete; RLS logged-out check; offline Save error; Vercel envs set
