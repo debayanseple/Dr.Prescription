@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import photoUrl from '../assets/dr-suranjana.jpg'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -25,17 +26,20 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-card" role="dialog" aria-labelledby="login-title">
         <div className="login-brand">
-          <div className="login-avatar" aria-hidden="true">SR</div>
-          <div>
-            <h2 id="login-title">Dr. Suranjana Roy</h2>
-            <p>Oral &amp; Maxillofacial Surgery · Prescription Desk</p>
+          <div className="login-avatar-ring">
+            <div className="login-avatar" aria-hidden="true">
+              <img src={photoUrl} alt="" />
+            </div>
           </div>
+          <span className="login-badge">Prescription Desk</span>
+          <h2 id="login-title">Dr. Suranjana Roy</h2>
+          <p>Oral &amp; Maxillofacial Surgery</p>
         </div>
 
         <ul className="login-points" aria-label="App highlights">
-          <li>⎙ Exact-A4 print-ready PDFs</li>
-          <li>☰ Patient history, searchable by name</li>
-          <li>🔒 Private to this clinic — secured sign-in</li>
+          <li><span className="login-ico" aria-hidden="true">⎙</span>Exact-A4 print-ready PDFs</li>
+          <li><span className="login-ico" aria-hidden="true">☰</span>Patient history, searchable by name</li>
+          <li><span className="login-ico" aria-hidden="true">🔒</span>Private to this clinic — secured sign-in</li>
         </ul>
 
         <form className="form-grid" onSubmit={submit} autoComplete="on">
@@ -86,7 +90,7 @@ export default function Login() {
         </form>
 
         <p className="login-foot">
-          PDFs generate on-device. Only saved history touches the server.
+          🔒 Secured sign-in · PDFs stay on-device
         </p>
       </div>
     </div>
