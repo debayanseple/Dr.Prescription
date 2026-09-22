@@ -1,6 +1,48 @@
 export default function PrescriptionForm({ data, onChange }) {
   const set = (key) => (e) => onChange({ ...data, [key]: e.target.value })
 
+  // Ordered RX list: Enter starts/continues "1. 2. 3. …" numbering,
+  // Shift+Enter inserts a plain newline, Enter on an empty item ends the list.
+  const nextRxNumber = (value) => {
+    let max = 0
+    for (const line of String(value || '').split('\n')) {
+      const m = line.match(/^\s*(\d+)\.\s/)
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+    return max + 1
+  }
+  const handleRxKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return
+    e.preventDefault()
+    const el = e.currentTarget
+    const value = data.rx || ''
+    const caret = el.selectionStart ?? value.length
+    const lineStart = value.lastIndexOf('\n', caret - 1) + 1
+    let lineEnd = value.indexOf('\n', caret)
+    if (lineEnd === -1) lineEnd = value.length
+    const line = value.slice(lineStart, lineEnd)
+    let next, pos
+    if (/^\s*\d+\.\s*$/.test(line)) {
+      // Empty item → end the list: remove this line (and one newline)
+      let head = value.slice(0, lineStart)
+      let tail = value.slice(lineEnd)
+      if (tail.startsWith('\n')) tail = tail.slice(1)
+      else head = head.replace(/\n$/, '')
+      next = head + tail
+      pos = head.length
+    } else {
+      const before = value.slice(0, caret)
+      const after = value.slice(caret)
+      const insert = (before === '' ? '' : '\n') + `${nextRxNumber(value)}. `
+      next = before + insert + after
+      pos = before.length + insert.length
+    }
+    onChange({ ...data, rx: next })
+    requestAnimationFrame(() => {
+      try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
+    })
+  }
+
   return (
     <form
       className="form-grid"
@@ -125,8 +167,18 @@ export default function PrescriptionForm({ data, onChange }) {
           placeholder={'1. Tab … — 1-0-1 × 5 days\n2. …'}
           value={data.rx}
           onChange={set('rx')}
+          onKeyDown={handleRxKeyDown}
+          onFocus={(e) => {
+            if (!data.rx) {
+              onChange({ ...data, rx: '1. ' })
+              requestAnimationFrame(() => {
+                try { e.currentTarget.setSelectionRange(3, 3) } catch { /* noop */ }
+              })
+            }
+          }}
           style={{ minHeight: 110 }}
         />
+        <p className="hint">Enter ↵ adds the next numbered item · Shift + Enter for a plain line.</p>
       </div>
 
       <p className="hint">Name + Age + Gender + Date are required for PDF download. Everything else is optional.</p>
