@@ -1,0 +1,9 @@
+# ---> .gitignore (prescription app — no backend, no secrets expected)
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.env
+.env.*
+!.env.example
