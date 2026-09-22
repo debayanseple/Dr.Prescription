@@ -169,17 +169,47 @@ export default function App() {
         const h = imgH * s
         pdf.addImage(imgData, 'JPEG', (pageW - w) / 2, 0, w, h)
       } else {
-        // Genuinely long note: flow across pages, signature at the very end.
-        let heightLeft = imgH
-        pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH)
-        heightLeft -= pageH
-        while (heightLeft > 0.5) {
-          // Shift the same tall image up so the next A4 window shows.
-          const position = -(imgH - heightLeft)
-          pdf.addPage('a4', 'portrait')
-          pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
-          heightLeft -= pageH
+        // Genuinely long note: flow across pages with content-aware breaks —
+        // never cut through text. Each page ends at a block boundary
+        // (between sections, or before the signature), leaving a clean
+        // margin at the page foot; the signature lands whole at the end.
+        const rect = node.getBoundingClientRect()
+        const k = canvas.width / rect.width // canvas px per css px
+        const nodeH = rect.height
+        const pageHcss = rect.width * (pageH / pageW) // one A4 page in css px
+        const edgeY = (el, top) => {
+          const r = el.getBoundingClientRect()
+          return (top ? r.top : r.bottom) - rect.top
         }
+        const cands = []
+        node.querySelectorAll('.tpl-sec').forEach((el) => cands.push(edgeY(el, false)))
+        const foot = node.querySelector('.tpl-footer')
+        if (foot) cands.push(edgeY(foot, true)) // keep signature whole
+        const slices = []
+        let start = 0
+        let guard = 0
+        while (start < nodeH - 1 && guard++ < 10) {
+          const boundary = start + pageHcss
+          if (boundary >= nodeH - 1) { slices.push([start, nodeH]); break }
+          let best = -1
+          for (const c of cands) {
+            if (c > start + 1 && c >= boundary - 350 && c <= boundary - 20 && c > best) best = c
+          }
+          const breakAt = best > start + 1 ? best : boundary // fallback: hard cut
+          slices.push([start, breakAt])
+          start = breakAt
+        }
+        const px2mm = pageW / canvas.width
+        slices.forEach(([a, b], i) => {
+          const y = Math.round(a * k)
+          const h = Math.max(1, Math.round((b - a) * k))
+          const pc = document.createElement('canvas')
+          pc.width = canvas.width
+          pc.height = h
+          pc.getContext('2d').drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h)
+          if (i > 0) pdf.addPage('a4', 'portrait')
+          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, h * px2mm)
+        })
       }
       pdf.save(fileName)
     } catch (err) {
@@ -221,15 +251,6 @@ export default function App() {
         <div className="header-actions">
           <button className="btn btn-ghost btn-small" onClick={handleClear} type="button">
             New
-          </button>
-          <button
-            className="btn btn-primary btn-small"
-            onClick={handleDownload}
-            disabled={!canDownload}
-            type="button"
-            title={!canDownload ? 'Enter patient name + age + gender + date first' : 'Download PDF'}
-          >
-            {busy ? 'Making PDF…' : 'PDF'}
           </button>
         </div>
       </header>
