@@ -100,6 +100,7 @@ export default function PrescriptionForm({ data, onChange }) {
               id="f-weight"
               type="number"
               inputMode="decimal"
+              step="any"
               min="0"
               placeholder="e.g. 62"
               value={data.weight}
@@ -115,6 +116,7 @@ export default function PrescriptionForm({ data, onChange }) {
               id="f-height"
               type="number"
               inputMode="decimal"
+              step="any"
               min="0"
               placeholder="e.g. 165"
               value={data.height}
@@ -136,6 +138,8 @@ export default function PrescriptionForm({ data, onChange }) {
         </div>
       </div>
 
+      <fieldset className="notes-group">
+        <legend>Clinical notes</legend>
       <div className="field">
         <label htmlFor="f-co">C/O — Chief Complaint</label>
         <textarea id="f-co" placeholder="Chief complaint…" value={data.co} onChange={set('co')} />
@@ -180,6 +184,7 @@ export default function PrescriptionForm({ data, onChange }) {
         />
         <p className="hint">Enter ↵ adds the next numbered item · Shift + Enter for a plain line.</p>
       </div>
+      </fieldset>
 
       <p className="hint">Name + Age + Gender + Date are required for PDF download. Everything else is optional.</p>
     </form>

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import PrescriptionForm from './components/PrescriptionForm.jsx'
 import PrescriptionPreview from './components/PrescriptionPreview.jsx'
 import Login from './components/Login.jsx'
 import History from './components/History.jsx'
-import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
+import { getSupabase, isSupabaseConfigured } from './lib/supabaseClient'
+
+// Heavy deps are code-split so first paint on a phone stays light:
+// the PDF renderer (html2canvas + jsPDF, ~600KB) loads on first download
+// (pre-warmed when idle), and the Supabase SDK (~120KB) only when history
+// is configured. See handleDownload and getSupabase.
 
 function todayISO() {
   const d = new Date()
@@ -70,12 +73,40 @@ export default function App() {
       setAuthReady(true)
       return
     }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null)
-      setAuthReady(true)
+    let alive = true
+    let sub = null
+    getSupabase().then((client) => {
+      if (!client || !alive) return
+      client.auth.getSession().then(({ data: d }) => {
+        if (!alive) return
+        setSession(d.session ?? null)
+        setAuthReady(true)
+      })
+      const { data } = client.auth.onAuthStateChange((_event, s) => {
+        if (alive) setSession(s)
+      })
+      sub = data
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
-    return () => sub.subscription.unsubscribe()
+    return () => {
+      alive = false
+      if (sub) sub.subscription.unsubscribe()
+    }
+  }, [])
+
+  // Warm the PDF renderer after first paint so the first Download tap stays
+  // within the 3s budget. Runs idle-only and fails silently (e.g. offline) —
+  // handleDownload imports the chunks on demand as a fallback.
+  useEffect(() => {
+    const warm = () => {
+      import('html2canvas').catch(() => {})
+      import('jspdf').catch(() => {})
+    }
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(warm, { timeout: 5000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const t = setTimeout(warm, 3000)
+    return () => clearTimeout(t)
   }, [])
 
   const saveReady = useMemo(
@@ -91,6 +122,8 @@ export default function App() {
 
   async function saveRecord() {
     if (!saveReady || saveBusy) return false
+    const client = await getSupabase()
+    if (!client) return false
     setSaveBusy(true)
     try {
       const nil = (v) => (String(v ?? '').trim() === '' ? null : v)
@@ -113,7 +146,7 @@ export default function App() {
       }
       if (editingId) {
         // Editing a history record → update it in place, no new row.
-        const { data: updated, error } = await supabase
+        const { data: updated, error } = await client
           .from('prescriptions')
           .update(payload)
           .eq('id', editingId)
@@ -121,7 +154,7 @@ export default function App() {
         if (error) throw error
         if (!updated || updated.length === 0) {
           // Row vanished (deleted elsewhere) → save as a new entry instead.
-          const { data: inserted, error: insErr } = await supabase
+          const { data: inserted, error: insErr } = await client
             .from('prescriptions')
             .insert({ ...payload, user_id: session.user.id })
             .select('id')
@@ -132,7 +165,7 @@ export default function App() {
           setSavedAt({ at: new Date(), updated: true })
         }
       } else {
-        const { data: inserted, error } = await supabase
+        const { data: inserted, error } = await client
           .from('prescriptions')
           .insert({ ...payload, user_id: session.user.id })
           .select('id')
@@ -245,6 +278,13 @@ export default function App() {
       }
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 
+      // Heavy renderers load on demand (code-split): fetched on first
+      // download — usually pre-warmed by the idle effect above — and reused
+      // from the module cache afterwards.
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
       // Capture at ~289 DPI (794px * 3 ≈ 2382px wide, vs 2480px for true
       // 300 DPI A4). Falls back to scale 2 (~192 DPI) if the device runs
       // out of canvas memory on very long (multi-page) sheets.
@@ -419,11 +459,12 @@ export default function App() {
           {session && (
             <button
               className="btn btn-ghost btn-small"
-              onClick={() => supabase.auth.signOut()}
+              onClick={() => getSupabase().then((c) => c && c.auth.signOut())}
               type="button"
               title={session.user.email || 'Sign out'}
+              aria-label="Log out"
             >
-              Out
+              Log out
             </button>
           )}
         </div>
@@ -479,6 +520,8 @@ export default function App() {
               onClick={handleDownload}
               disabled={!canDownload}
               type="button"
+              title={!canDownload ? 'Enter Name, Age, Gender and Date to enable download' : 'Download PDF'}
+              aria-describedby="dl-status"
             >
               {busy ? 'Generating PDF…' : '⬇ Download PDF'}
             </button>
@@ -493,7 +536,7 @@ export default function App() {
                 {saveBusy ? 'Saving…' : editingId ? 'Update' : 'Save'}
               </button>
             )}
-            <button className="btn" onClick={handleClear} type="button">
+            <button className="btn btn-ghost" onClick={handleClear} type="button">
               Clear Form
             </button>
             <div className="zoom-controls">
@@ -519,7 +562,7 @@ export default function App() {
           <div className="preview-zoom" style={{ zoom }}>
             <PrescriptionPreview ref={sheetRef} data={data} />
           </div>
-          <p className="status-line">
+          <p className="status-line" id="dl-status">
             {!data.name.trim() || !data.date || !String(data.age).trim() || !String(data.gender).trim()
               ? 'Fill Patient’s Name + Age + Gender + Date to enable download.'
               : `Ready — will save as ${fileName}`}

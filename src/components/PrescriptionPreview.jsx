@@ -28,7 +28,7 @@ const PrescriptionPreview = forwardRef(function PrescriptionPreview({ data }, re
           <div className="tpl-header">
             <div>
               <p className="tpl-doc-name">Dr. Suranjana Roy</p>
-              <p className="tpl-doc-sub">ORAL &amp; MAXILLOFACIAL SURGEON, M.D.S (CAL)</p>
+              <p className="tpl-doc-sub">Oral &amp; Maxillofacial Surgeon, M.D.S (Cal)</p>
               <p className="tpl-reg">Reg. No. 7324-A ( WBUHS)</p>
               <p className="tpl-desc">
                 Specialized in head and neck surgical oncology, maxillofacial reconstruction,

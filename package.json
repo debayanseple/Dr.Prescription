@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Clinician prescription form with live template preview and client-side PDF export. No backend.",
+  "description": "Clinician prescription form with live template preview and client-side PDF export. Offline-first; optional Supabase history when configured.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

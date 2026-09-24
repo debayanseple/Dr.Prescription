@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { getSupabase } from '../lib/supabaseClient'
 import photoUrl from '../assets/dr-suranjana.jpg'
 
 export default function Login() {
@@ -14,12 +14,22 @@ export default function Login() {
     if (busy) return
     setBusy(true)
     setError('')
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
-    if (error) setError(error.message)
-    setBusy(false)
+    try {
+      const client = await getSupabase()
+      if (!client) {
+        setError('History service is not configured on this device.')
+        return
+      }
+      const { error } = await client.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      if (error) setError(error.message)
+    } catch (err) {
+      setError(err.message || 'Sign-in failed. Please try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

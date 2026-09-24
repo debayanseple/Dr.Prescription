@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { getSupabase } from '../lib/supabaseClient'
 
 const fmtDate = (iso) => (iso ? String(iso).split('-').reverse().join('/') : '—')
 
@@ -23,9 +23,16 @@ export default function History({ onOpen }) {
     setLoading(true)
     setError('')
     try {
-      let query = supabase
+      const client = await getSupabase()
+      if (!client) {
+        setError('History is not configured on this device.')
+        return
+      }
+      // Fetch only the columns the list renders — never the full clinical
+      // text for 200 rows on a phone connection.
+      let query = client
         .from('prescriptions')
-        .select('*')
+        .select('id,patient_name,visit_date,age,gender,created_at')
         .order('created_at', { ascending: false })
         .limit(200)
       const term = search.trim().replace(/[%_]/g, '')
@@ -40,12 +47,20 @@ export default function History({ onOpen }) {
     }
   }
 
+  const firstRun = useRef(true)
+
   useEffect(() => {
     load('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
+    // The mount effect above already loaded with q === '', so skip the
+    // first debounce firing to avoid a duplicate query on open.
+    if (firstRun.current) {
+      firstRun.current = false
+      return
+    }
     const t = setTimeout(() => load(q), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +75,9 @@ export default function History({ onOpen }) {
     }
     if (armTimer.current) clearTimeout(armTimer.current)
     setConfirmId(null)
-    const { error } = await supabase.from('prescriptions').delete().eq('id', row.id)
+    const client = await getSupabase()
+    if (!client) return
+    const { error } = await client.from('prescriptions').delete().eq('id', row.id)
     if (error) {
       alert('Delete failed: ' + error.message)
       return
