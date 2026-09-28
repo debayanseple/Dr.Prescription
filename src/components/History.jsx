@@ -66,6 +66,28 @@ export default function History({ onOpen }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q])
 
+  async function handleOpen(row) {
+    // The list query selects only lean columns (see load), so fetch the
+    // full row — incl. clinical notes — before handing it to the form.
+    try {
+      const client = await getSupabase()
+      if (!client) {
+        onOpen(row)
+        return
+      }
+      const { data, error } = await client
+        .from('prescriptions')
+        .select('*')
+        .eq('id', row.id)
+        .single()
+      if (error) throw error
+      onOpen(data || row)
+    } catch (err) {
+      console.error('Failed to load full record', err)
+      onOpen(row)
+    }
+  }
+
   async function handleDelete(row) {
     // Two-tap confirm: first tap arms ("Sure?"), second tap deletes.
     // (No window.confirm — native dialogs are unreliable on mobile.)
@@ -114,7 +136,7 @@ export default function History({ onOpen }) {
               </span>
             </div>
             <div className="history-actions">
-              <button className="btn btn-small" type="button" onClick={() => onOpen(r)}>
+              <button className="btn btn-small" type="button" onClick={() => handleOpen(r)}>
                 Open
               </button>
               <button

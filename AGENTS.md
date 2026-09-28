@@ -35,7 +35,7 @@ Without env config the app is fully offline: no login, no History tab, zero netw
 - Env (Vite exposes only `VITE_`-prefixed vars): `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` in `.env.local` (gitignored, never commit). Restart `npm run dev` after changing. Mirror both vars in the Vercel dashboard for deploys.
 - Schema/RLS source of truth: `docs/supabase-history-plan.md` (`prescriptions` table, owner-only RLS). Column mapping: `date`→`visit_date`, `doa`→`admitted_on`, `dos`→`surgery_on`; empty strings saved as `null`.
 - Save flow: `pdf.save()` first, then `insert()`; PDF success is never blocked by a history failure (alert only). Editing a history row updates in place (`editingId`); a vanished row falls back to insert.
-- History search: `ilike('patient_name', …)` with `%`/`_` stripped, 300ms debounce, latest 200. Delete is two-tap arm-then-confirm (no `window.confirm` — native dialogs are unreliable on mobile).
+- History search: `ilike('patient_name', …)` with `%`/`_` stripped, 300ms debounce, latest 200. List selects lean columns only (`id,patient_name,visit_date,age,gender,created_at`); Open fetches the full row (`select('*').eq('id', …)`) so clinical notes populate the form. Delete is two-tap arm-then-confirm (no `window.confirm` — native dialogs are unreliable on mobile).
 
 ## Conventions / gotchas
 
