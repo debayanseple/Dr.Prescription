@@ -50,6 +50,23 @@ export default function App() {
   )
   const clampZoom = (z) => Math.min(1.5, Math.max(0.4, Math.round(z * 10) / 10))
   const sheetRef = useRef(null)
+  const [autosave, setAutosave] = useState(() => {
+    try { return localStorage.getItem('rx-autosave') === '1' } catch { return false }
+  })
+  // Refs so the debounced autosave timer always sees the latest state.
+  const dataRef = useRef(data)
+  const sessionRef = useRef(session)
+  const busyRef = useRef(busy)
+  const saveBusyRef = useRef(saveBusy)
+  const saveRecordRef = useRef(null)
+  dataRef.current = data
+  sessionRef.current = session
+  busyRef.current = busy
+  saveBusyRef.current = saveBusy
+  saveRecordRef.current = saveRecord
+  // JSON snapshot of the form at the last successful save/open/clear —
+  // autosave only fires when the draft differs from this.
+  const lastSavedRef = useRef(null)
 
   const canDownload = useMemo(
     () =>
@@ -173,6 +190,7 @@ export default function App() {
         setEditingId(inserted[0].id)
         setSavedAt({ at: new Date(), updated: false })
       }
+      lastSavedRef.current = JSON.stringify(data)
       setHistTick((t) => t + 1)
       return true
     } catch (err) {
@@ -186,7 +204,7 @@ export default function App() {
 
   function openRecord(r) {
     setEditingId(r.id)
-    setData({
+    const rec = {
       name: r.patient_name || '',
       age: r.age || '',
       gender: r.gender || '',
@@ -202,7 +220,9 @@ export default function App() {
       wd: r.wd || '',
       plan: r.plan || '',
       rx: r.rx || '',
-    })
+    }
+    setData(rec)
+    lastSavedRef.current = JSON.stringify(rec)
     setSavedAt(null)
     setView('preview')
   }
@@ -398,7 +418,9 @@ export default function App() {
 
   function handleClear() {
     if (window.confirm('Start a new patient? This clears all fields.')) {
-      setData(blankForm())
+      const blank = blankForm()
+      setData(blank)
+      lastSavedRef.current = JSON.stringify(blank)
       setEditingId(null)
       setSavedAt(null)
       setView('form')
@@ -406,6 +428,36 @@ export default function App() {
   }
 
   const authed = isSupabaseConfigured && !!session
+
+  // Autosave to history (logged-in only): 4s after the last edit, save the
+  // draft if it differs from the last saved snapshot. The first save
+  // inserts (setting editingId); later saves update in place via saveRecord.
+  // Skipped while a PDF is generating or a save is already in flight.
+  function toggleAutosave(e) {
+    const on = e.target.checked
+    setAutosave(on)
+    try { localStorage.setItem('rx-autosave', on ? '1' : '0') } catch { /* noop */ }
+  }
+
+  useEffect(() => {
+    if (!autosave || !authed) return
+    if (lastSavedRef.current === JSON.stringify(data)) return
+    const t = setTimeout(() => {
+      if (busyRef.current || saveBusyRef.current) return
+      const d = dataRef.current
+      const ready =
+        isSupabaseConfigured &&
+        !!sessionRef.current &&
+        d.name.trim().length > 0 &&
+        d.date.trim().length > 0 &&
+        String(d.age).trim().length > 0 &&
+        String(d.gender).trim().length > 0
+      if (!ready) return
+      if (lastSavedRef.current === JSON.stringify(d)) return
+      if (saveRecordRef.current) saveRecordRef.current()
+    }, 4000)
+    return () => clearTimeout(t)
+  }, [data, autosave, authed])
 
   if (!authReady) {
     return (
@@ -525,20 +577,6 @@ export default function App() {
             >
               {busy ? 'Generating PDF…' : '⬇ Download PDF'}
             </button>
-            {authed && (
-              <button
-                className="btn"
-                onClick={saveRecord}
-                disabled={!saveReady || busy || saveBusy}
-                type="button"
-                title={!saveReady ? 'Fill Name + Age + Gender + Date first' : editingId ? 'Update this history entry' : 'Save to history without downloading'}
-              >
-                {saveBusy ? 'Saving…' : editingId ? 'Update' : 'Save'}
-              </button>
-            )}
-            <button className="btn btn-ghost" onClick={handleClear} type="button">
-              Clear Form
-            </button>
             <div className="zoom-controls">
               <button
                 className="btn btn-small"
@@ -570,6 +608,35 @@ export default function App() {
               ? ` · ${savedAt.updated ? 'Updated' : 'Saved to history'} ✓ ${savedAt.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
               : ''}
           </p>
+          <div className="preview-actions">
+            {authed && (
+              <button
+                className="btn"
+                onClick={saveRecord}
+                disabled={!saveReady || busy || saveBusy}
+                type="button"
+                title={!saveReady ? 'Fill Name + Age + Gender + Date first' : editingId ? 'Update this history entry' : 'Save to history without downloading'}
+              >
+                {saveBusy ? 'Saving…' : editingId ? 'Update' : 'Save'}
+              </button>
+            )}
+            <button className="btn btn-ghost" onClick={handleClear} type="button">
+              Clear Form
+            </button>
+            {authed && (
+              <label
+                className="autosave-toggle"
+                title="Automatically save to history a few seconds after each edit"
+              >
+                <input
+                  type="checkbox"
+                  checked={autosave}
+                  onChange={toggleAutosave}
+                />
+                Autosave
+              </label>
+            )}
+          </div>
         </section>
 
         {view === 'history' && authed && (

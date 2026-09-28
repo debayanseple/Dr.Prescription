@@ -36,6 +36,7 @@ Without env config the app is fully offline: no login, no History tab, zero netw
 - Schema/RLS source of truth: `docs/supabase-history-plan.md` (`prescriptions` table, owner-only RLS). Column mapping: `date`→`visit_date`, `doa`→`admitted_on`, `dos`→`surgery_on`; empty strings saved as `null`.
 - Save flow: `pdf.save()` first, then `insert()`; PDF success is never blocked by a history failure (alert only). Editing a history row updates in place (`editingId`); a vanished row falls back to insert.
 - History search: `ilike('patient_name', …)` with `%`/`_` stripped, 300ms debounce, latest 200. List selects lean columns only (`id,patient_name,visit_date,age,gender,created_at`); Open fetches the full row (`select('*').eq('id', …)`) so clinical notes populate the form. Delete is two-tap arm-then-confirm (no `window.confirm` — native dialogs are unreliable on mobile).
+- Autosave toggle (History only, pref in `localStorage rx-autosave`): 4s after last edit, saves via `saveRecord()` if the draft differs from `lastSavedRef` snapshot; first save inserts (sets `editingId`), later saves update in place; skipped while PDF busy/saving. Any successful save refreshes the snapshot so manual Save/Update/Download don't trigger a duplicate autosave.
 
 ## Conventions / gotchas
 

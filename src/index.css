@@ -597,6 +597,29 @@ body {
   flex-wrap: wrap;
   align-items: center;
 }
+.preview-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.autosave-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.autosave-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 .preview-zoom { width: 100%; }
 .zoom-controls {
   display: flex;
@@ -640,7 +663,7 @@ body {
   margin: 0;
 }
 @media print {
-  .app-header, .view-toggle, .form-panel, .preview-toolbar, .privacy-note, .status-line {
+  .app-header, .view-toggle, .form-panel, .preview-toolbar, .preview-actions, .privacy-note, .status-line {
     display: none !important;
   }
   .preview-zoom { zoom: 1; } /* browser print always uses the full-size sheet */
