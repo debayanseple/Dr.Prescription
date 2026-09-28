@@ -1,6 +1,6 @@
 # AGENTS.md — Prescription Form → PDF
 
-Vite 5 + React 18 (JSX, no TypeScript). Plain CSS, no UI framework. No tests, no linter, no typecheck.
+Vite 5 + React 18 (JSX, no TypeScript). Plain CSS, no UI framework. No tests, no linter, no typecheck. Offline-first by default.
 
 ## Commands
 

@@ -148,7 +148,7 @@ export default function App() {
         // Editing a history record → update it in place, no new row.
         const { data: updated, error } = await client
           .from('prescriptions')
-          .update(payload)
+          .update({ ...payload, user_id: session.user.id })
           .eq('id', editingId)
           .select('id')
         if (error) throw error
