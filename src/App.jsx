@@ -17,6 +17,13 @@ function todayISO() {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
+function dayGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 const blankForm = () => ({
   name: '',
   age: '',
@@ -50,6 +57,8 @@ export default function App() {
   )
   const clampZoom = (z) => Math.min(1.5, Math.max(0.4, Math.round(z * 10) / 10))
   const sheetRef = useRef(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
   const [autosave, setAutosave] = useState(() => {
     try { return localStorage.getItem('rx-autosave') === '1' } catch { return false }
   })
@@ -459,13 +468,23 @@ export default function App() {
     return () => clearTimeout(t)
   }, [data, autosave, authed])
 
+  // Close the header ⋮ menu on outside tap.
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuOpen])
+
   if (!authReady) {
     return (
       <div className="app-shell">
         <header className="app-header">
           <div>
-            <h1>Prescription Form → PDF</h1>
-            <p>Loading…</p>
+            <h1>{dayGreeting()}, Dr. Roy</h1>
+            <p>Loading… · powered by Debayan Chakraborty</p>
           </div>
         </header>
       </div>
@@ -477,8 +496,8 @@ export default function App() {
       <div className="app-shell">
         <header className="app-header">
           <div>
-            <h1>Prescription Form → PDF</h1>
-            <p>Sign in to continue</p>
+            <h1>{dayGreeting()}, Dr. Roy</h1>
+            <p>Sign in to continue · powered by Debayan Chakraborty</p>
           </div>
         </header>
         <main className="main main-centered">
@@ -492,8 +511,8 @@ export default function App() {
     <div className={`app-shell ${view === 'form' ? 'show-form' : view === 'history' ? 'show-history' : 'show-preview'}`}>
       <header className="app-header">
         <div>
-          <h1>Prescription Form → PDF</h1>
-          <p>Fill • Preview • Download — works offline, private to this device</p>
+          <h1>{dayGreeting()}, Dr. Roy</h1>
+          <p>powered by Debayan Chakraborty</p>
         </div>
         <div className="header-actions">
           {authed && (
@@ -505,20 +524,39 @@ export default function App() {
               {view === 'history' ? '← Back' : 'History'}
             </button>
           )}
-          <button className="btn btn-ghost btn-small" onClick={handleClear} type="button">
-            New
-          </button>
-          {session && (
+          <div className="menu-wrap" ref={menuRef}>
             <button
-              className="btn btn-ghost btn-small"
-              onClick={() => getSupabase().then((c) => c && c.auth.signOut())}
+              className="btn btn-ghost btn-small menu-btn"
+              onClick={() => setMenuOpen((o) => !o)}
               type="button"
-              title={session.user.email || 'Sign out'}
-              aria-label="Log out"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="More options"
             >
-              Log out
+              ⋮
             </button>
-          )}
+            {menuOpen && (
+              <div className="menu-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); handleClear(); }}
+                >
+                  ✎ New
+                </button>
+                {session && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    title={session.user.email || 'Sign out'}
+                    onClick={() => { setMenuOpen(false); getSupabase().then((c) => c && c.auth.signOut()); }}
+                  >
+                    ⎋ Log out
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
